@@ -25,7 +25,7 @@ dependencies = [
     "loguru",                                    
     "tqdm",                        
     "scikit-learn",                
-    "pyBigWig"
+    "pyBigWig",
     "biopython>=1.80",
     "scipy",
     "matplotlib",
