@@ -28,32 +28,36 @@ deepisa_filter/
     └── motif_filter_tutorial.ipynb
 ```
 
-## Data Setup (Required)
-
-The pipeline requires the hg38 genome (FASTA, chromosome-level).
-
-### Download hg38
+## Installation
 
 ```bash
-# Download hg38 (one-time, ~1 GB)
-mkdir -p /path/to/hg38
-cd /path/to/hg38
+pip install -r requirements.txt
+```
 
+## Genome Data
+
+hg38 must be downloaded separately (required by the pipeline).
+
+Download:
+```bash
 wget https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz
 gunzip hg38.fa.gz
+```
 
-# Index and split into per-chromosome FASTA
+Split into per-chromosome FASTA files (required format):
+```bash
 mkdir -p chroms
 samtools faidx hg38.fa
 awk '{print $1}' hg38.fa.fai | while read chr; do
     samtools faidx hg38.fa "$chr" > chroms/${chr}.fa
 done
-
-# Verify
-ls chroms/chr1.fa   # should exist
+ls chroms/chr1.fa   # verify
 ```
 
-Expected path: `/path/to/hg38/chroms/`
+Set the genome path via environment variable or update your code:
+```python
+GENOME_DIR = "/path/to/hg38/chroms"   # or set HG38_DIR env var
+```
 
 ### Pre-existing data (shipped with repo)
 
@@ -116,7 +120,20 @@ T_peak=<float>
 pass_rate=<float>   (should be 1%–80%)
 ```
 
-### Option 3: Notebook Tutorial
+### Option 3: Standalone Filter (no ISA)
+
+Run only the motif filter, without ISA:
+
+```bash
+python -m deepISA.motif_filter.cli.run_filter \
+    --model data/model_blympho.pt \
+    --fasta-dir /path/to/hg38/chroms \
+    --regions data/regions_pos_with_count.csv \
+    --motifs data/motif_locs.csv \
+    --out filtered.csv
+```
+
+### Option 4: Notebook Tutorial
 
 ```bash
 cd tutorials/
@@ -133,6 +150,22 @@ s = Σ|attr| (energy), p = max|attr| (peak)
 T_sum = P95(s_null), T_peak = P80(p_null)
 Keep if: s > T_sum OR p > T_peak
 Output: Filtered motif hits → ISA
+```
+
+## Known Issues
+
+- `run_single_isa.py` depends on upstream deepISA annotation code which
+  incorrectly calls `pyBigWig.open()` on a JASPAR text file.
+  This is unrelated to the motif_filter module.
+- The motif_filter pipeline and tutorial notebook run correctly as standalone.
+
+## CPU Usage
+
+On machines without a GPU, add `--device cpu` to any command:
+
+```bash
+python scripts/run_single_isa.py ... --device cpu
+python -m deepISA.motif_filter.cli.run_filter ... --device cpu
 ```
 
 ## Key Parameters
