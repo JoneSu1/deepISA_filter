@@ -34,6 +34,24 @@ deepisa_filter/
 pip install -r requirements.txt
 ```
 
+**External dependency (samtools):**
+
+The genome setup script requires `samtools` to index and split hg38.
+
+```bash
+# Linux
+sudo apt install samtools
+
+# Mac
+brew install samtools
+```
+
+Or set the `SAMTOOLS` environment variable to the binary path:
+
+```bash
+export SAMTOOLS=/path/to/samtools
+```
+
 ## Genome Data
 
 hg38 must be downloaded separately (required by the pipeline).
@@ -105,10 +123,10 @@ result = run_pipeline(
 python scripts/run_single_isa.py \
     --prefilter motif_filter \
     --jaspar data/JASPAR2026_CORE_non-redundant_pfms_jaspar.txt \
-    --fasta_dir /path/to/hg38/chroms \
+    --fasta-dir /path/to/hg38/chroms \
     --regions data/regions_pos_with_count.csv \
     --model data/model_blympho.pt \
-    --n_regions 20 \
+    --n-regions 20 \
     --device cuda \
     --outdir results
 ```
@@ -186,4 +204,120 @@ results/
 ├── motif_locs_raw.csv        ← all JASPAR hits
 ├── motif_locs_filtered.csv  ← motif_filter output (passed motifs)
 └── isa_single.csv           ← ISA scores
+```
+
+---
+
+## Developer Guide
+
+### Project Structure
+
+```
+src/deepISA/
+├── motif_filter/
+│   ├── cli/
+│   │   ├── common_args.py    ← shared CLI argument definitions
+│   │   └── run_filter.py     ← standalone filter CLI
+│   ├── core/
+│   │   ├── attribution.py   ← DeepLIFT computation
+│   │   ├── scoring.py       ← s (energy) and p (peak) scoring
+│   │   ├── threshold.py    ← T_sum / T_peak threshold logic
+│   │   └── window.py       ← non-motif window generation
+│   ├── pipeline/
+│   │   ├── filter_pipeline.py  ← main pipeline (internal)
+│   │   └── api.py              ← high-level API for developers
+│   ├── utils/
+│   │   ├── genome_setup.py    ← hg38 auto-download + split
+│   │   └── config_loader.py   ← YAML config loader
+│   └── utils/                 ← io, fasta, onehot utilities
+│
+├── scoring/                    ← ISA scoring (upstream)
+├── utils/
+│   ├── genome_setup.py
+│   └── config_loader.py
+│
+├── config/
+│   └── default_config.yaml    ← default parameters
+│
+└── scripts/
+    └── run_single_isa.py      ← CLI: prefilter → ISA
+```
+
+### Python API
+
+Minimal usage:
+
+```python
+from deepISA.motif_filter.pipeline.api import run_pipeline
+
+result = run_pipeline(
+    fasta_dir="/path/to/hg38/chroms",
+    regions_df="data/regions_pos_with_count.csv",
+    motif_locs_df="data/motif_locs.csv",
+    model_path="data/model_blympho.pt",
+    device="cuda",
+    n_regions=200,
+)
+```
+
+Using regions directly:
+
+```python
+import pandas as pd
+from deepISA.motif_filter.pipeline.api import run_pipeline
+
+regions_df = pd.read_csv("data/regions_pos_with_count.csv")
+motifs_df  = pd.read_csv("data/motif_locs.csv")
+
+result, model = run_pipeline(
+    fasta_dir="/path/to/hg38/chroms",
+    regions_df=regions_df,
+    motif_locs_df=motifs_df,
+    device="cpu",
+    return_model=True,
+)
+```
+
+### Configuration File
+
+Parameters can be overridden via YAML:
+
+```python
+from deepISA.utils.config_loader import load_config
+
+cfg = load_config("config/default_config.yaml")
+device = cfg["runtime"]["device"]
+```
+
+### Auto-download Genome
+
+```python
+from deepISA.utils.genome_setup import ensure_hg38
+
+genome_dir = ensure_hg38("./data/genome")  # downloads hg38 if missing
+# Returns: "./data/genome/hg38/chroms"
+```
+
+### CLI (unified interface)
+
+All scripts now use consistent kebab-case arguments:
+
+```bash
+# Standalone filter
+python -m deepISA.motif_filter.cli.run_filter \
+    --fasta-dir /path/to/hg38/chroms \
+    --regions data/regions_pos_with_count.csv \
+    --motifs data/motif_locs.csv \
+    --model data/model_blympho.pt \
+    --out filtered.csv
+
+# Full pipeline (prefilter + ISA)
+python scripts/run_single_isa.py \
+    --prefilter motif_filter \
+    --jaspar data/JASPAR2026_CORE_non-redundant_pfms_jaspar.txt \
+    --fasta-dir /path/to/hg38/chroms \
+    --regions data/regions_pos_with_count.csv \
+    --model data/model_blympho.pt \
+    --device cpu \
+    --outdir results
 ```
