@@ -1,5 +1,4 @@
-"""High-level pipeline API for developers."""
-from __future__ import annotations
+"""High-level pipeline API for developers.
 
 Provides a clean, reusable entry point that wraps the full motif_filter pipeline
 without requiring CLI usage.
@@ -14,6 +13,7 @@ Example:
         motif_locs_df=motifs_df,
     )
 """
+from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
