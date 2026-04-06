@@ -24,3 +24,19 @@ notebooks/*.pdf
 .venv/
 venv/
 env/
+test_env/
+
+# --- Large Data & Downloads ---
+data/genome/
+src/data/genome/
+data/*.fa
+data/*.fai
+filtered_motifs_tutorial.csv
+
+# --- Symlinks to external large files (will be recreated at runtime) ---
+src/data/model_blympho.pt
+src/data/motif_locs.csv
+src/data/regions_pos_with_count.csv
+data/model_blympho.pt
+data/motif_locs.csv
+data/regions_pos_with_count.csv
