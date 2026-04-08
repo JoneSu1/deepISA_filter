@@ -1,4 +1,6 @@
 """Non-motif null attribution filtering pipeline."""
+from __future__ import annotations
+
 import warnings
 import pandas as pd
 import numpy as np
@@ -13,6 +15,7 @@ from ..core.attribution import compute_attribution, init_explainer
 from ..core.window import generate_nonmotif_windows, windows_to_rel_coords
 from ..core.scoring import compute_window_scores
 from ..core.threshold import compute_thresholds, apply_filter
+from deepISA.utils.deepisa_guard import validate_deepisa_environment
 
 
 def run_pipeline(
@@ -61,6 +64,9 @@ def run_pipeline(
         T_sum, T_peak, n_null_windows, n_input_motifs,
         n_passed, n_regions_low_windows
     """
+    # ── Environment guard (fail fast on version mismatch) ───────────
+    validate_deepisa_environment()
+
     # ── Input validation ────────────────────────────────────────────
     assert stride <= window_size, (
         f"stride ({stride}) must be <= window_size ({window_size}) "
