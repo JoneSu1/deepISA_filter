@@ -39,8 +39,15 @@ _DEEPISA_PACKAGES = {
 
 def _get_installed_version(pkg: str) -> str | None:
     """Return installed version of a package, or None if not installed."""
+    # Package name aliases: pip name -> import name
+    _alias = {
+        "pyyaml": "yaml",
+        "sklearn": "sklearn",
+        "scikit-learn": "sklearn",
+    }
+    import_name = _alias.get(pkg, pkg)
     try:
-        mod = __import__(pkg)
+        mod = __import__(import_name)
         ver = getattr(mod, "__version__", None)
         if ver is None:
             ver = getattr(mod, "version__", None)
@@ -95,8 +102,12 @@ def validate_deepisa_environment() -> None:
         installed = _get_installed_version(pkg)
         if installed is None:
             mismatches.append((pkg, expected_ver, "NOT INSTALLED"))
-        elif installed != expected_ver:
-            mismatches.append((pkg, expected_ver, installed))
+        else:
+            # Normalize: strip suffix like +cu128, +cpu, etc. for comparison
+            installed_base = installed.split("+")[0]
+            expected_base = expected_ver.split("+")[0]
+            if installed_base != expected_base:
+                mismatches.append((pkg, expected_ver, installed))
 
     if mismatches:
         errors.append("  Package version mismatches:")

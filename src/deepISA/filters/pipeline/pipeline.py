@@ -28,6 +28,7 @@ def run_pipeline(
     stride: int = 20,
     device: str = "cuda",
     n_regions: Optional[int] = None,
+    skip_env_check: bool = False,
 ) -> pd.DataFrame:
     """
     Run the full non-motif null attribution filtering pipeline.
@@ -65,7 +66,8 @@ def run_pipeline(
         n_passed, n_regions_low_windows
     """
     # ── Environment guard (fail fast on version mismatch) ───────────
-    validate_deepisa_environment()
+    if not skip_env_check:
+        validate_deepisa_environment()
 
     # ── Input validation ────────────────────────────────────────────
     assert stride <= window_size, (

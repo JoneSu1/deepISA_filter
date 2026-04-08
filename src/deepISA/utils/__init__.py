@@ -19,6 +19,8 @@ from scipy.stats import mannwhitneyu
 from deepISA.utils.genome_setup import ensure_hg38, check_samtools, prepare_chroms_from_fasta
 from deepISA.utils.config_loader import load_config, get_param
 from deepISA.utils.deepisa_guard import validate_deepisa_environment
+from deepISA.utils.fasta import FastaReader
+from deepISA.utils.onehot import encode_sequences
 
 
 
