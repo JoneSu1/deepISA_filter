@@ -1,16 +1,23 @@
 # AlphaGenome backend config for deepISA
 # ─────────────────────────────────────────────────────────────────────────────
 # Usage:
-#   from deepISA.modeling.alpha_genome_adapter import AlphaGenomeAdapter
+#   from deepISA.model.alpha_genome_adapter import AlphaGenomeAdapter
 #   adapter = AlphaGenomeAdapter("configs/ag_config_template.yaml")
 #
 # Browse available biosamples and assay types:
 #   notebooks/ag_biosample_reference.csv   (714 biosamples × 10 assay types)
 #
+# Resilience (long unattended runs): every section below is optional with the
+# defaults shown. The adapter keeps an on-disk cache next to this file, retries
+# transient API errors with backoff, rebuilds the client when it goes stale,
+# and waits out quota limits — so a crashed run resumes where it left off by
+# simply re-running the same command. `adapter.stats` and `adapter.diagnose()`
+# show what it has been doing.
 # ─────────────────────────────────────────────────────────────────────────────
 # Option A — Single track  (most common, backward-compatible format)
 # ─────────────────────────────────────────────────────────────────────────────
 api_key: YOUR_API_KEY_HERE     # get one free (non-commercial): https://deepmind.google.com/science/alphagenome
+                               # or ${ALPHAGENOME_API_KEY} to read it from the environment
 output_type: DNASE             # DNASE | ATAC | CAGE | RNA_SEQ | CHIP_TF | CHIP_HISTONE | PROCAP
 biosample_name: GM12878        # exact string from ag_biosample_reference.csv
 
@@ -18,6 +25,39 @@ biosample_name: GM12878        # exact string from ag_biosample_reference.csv
 context_len: 16384             # AlphaGenome input length (do not change)
 seq_len: 600                   # deepISA region length (match your training)
 aggregation: sum               # how to aggregate the seq_len window: sum | mean | max
+                               # (log1p is applied after aggregation; sum → log1p(sum))
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Resilience knobs — safe to delete entirely (defaults below apply)
+# ─────────────────────────────────────────────────────────────────────────────
+# cache:
+#   enabled: true              # write-through SQLite cache (crash-safe resume)
+#   path: null                 # null → <this file>.cache.sqlite next to this config
+#
+# retry:
+#   enabled: true
+#   transient:                 # UNAVAILABLE / DEADLINE_EXCEEDED / INTERNAL / ...
+#     initial_delay_seconds: 5
+#     max_delay_seconds: 300
+#     multiplier: 2.0
+#     jitter: 0.2
+#   quota:                     # RESOURCE_EXHAUSTED / 429 — wait-and-resume
+#     wait_forever: true       # false + max_wait_seconds to give up instead
+#     initial_delay_seconds: 60
+#     max_delay_seconds: 900   # backoff grows 1 → 2 → 5 → 10 → 15 min, then 15 min
+#     max_wait_seconds: 3600   # only used when wait_forever: false
+#   invalid_argument:          # diagnostic retries (client rebuilt between)
+#     max_attempts: 3
+#     delays_seconds: [5, 30, 120]
+#
+# client:
+#   max_age_seconds: 3600      # proactive rebuild after 1 h
+#   max_calls: 5000            # ...or after 5000 calls (whichever comes first)
+#   rpc_timeout_seconds: 300   # per-RPC deadline (passed when the client supports it)
+#
+# logging:
+#   level: INFO                # INFO shows progress/heartbeats; WARNING only failures
+#   log_stats_every: 1000      # progress line every N API calls
 
 
 # ─────────────────────────────────────────────────────────────────────────────
