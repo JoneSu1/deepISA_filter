@@ -45,7 +45,7 @@ def run_motif_report(
     ----------
     modisco_h5 : str
         Path to a ``*_modisco_results.h5`` produced by
-        :func:`deepISA.scoring.discover.modisco.run_modisco`.
+        :func:`deepISA.discover.modisco.run_modisco`.
     out_dir : str
         Destination directory for the report. Created if missing.
     meme_db : str, optional
@@ -121,7 +121,7 @@ def cwm_to_meme(
     ----------
     motifs : dict
         ``{motif_id -> {"cwm": (L, 4) array, ...}}``, e.g. from
-        :func:`deepISA.scoring.discover.h5_io.load_motifs`. The CWM is reduced
+        :func:`deepISA.discover.h5_io.load_motifs`. The CWM is reduced
         to a PPM by clipping negatives to 0 and renormalizing per position.
     out_path : str
         Destination MEME file path.

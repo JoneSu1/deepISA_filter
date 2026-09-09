@@ -18,7 +18,7 @@ Both are pure DataFrame filters; the QuickStart layer
 (:meth:`deepISA.quickstart.QuickStart.run_modisco`) composes them and decides
 where the activity score comes from. Any ``N`` that still slips through to
 attribution is imputed by
-:func:`deepISA.scoring.discover.attribution.compute_attribution` as a last
+:func:`deepISA.discover.attribution.compute_attribution` as a last
 resort.
 """
 

@@ -1,6 +1,6 @@
 """Fi-NeMo orchestration: NPZ input, CLI scanning, hits loading, motif DB build.
 
-Like :mod:`deepISA.scoring.discover.modisco`, this is a thin orchestrator around
+Like :mod:`deepISA.discover.modisco`, this is a thin orchestrator around
 the external ``finemo`` binary. Inputs are built and outputs parsed in Python;
 the actual hit-calling happens in the CLI. If ``finemo`` is not on ``PATH`` the
 input-building and hits-parsing functions still work -- only
@@ -160,7 +160,7 @@ def run_finemo_scan(
     RuntimeError
         If the ``finemo`` binary is not on ``PATH`` or exits non-zero.
     """
-    from deepISA.scoring.discover.modisco import resolve_cli, python_wrap
+    from deepISA.discover.modisco import resolve_cli, python_wrap
     finemo_bin = resolve_cli("finemo")
     if finemo_bin is None:
         raise RuntimeError(_FINEMO_INSTALL_HINT)
@@ -263,7 +263,7 @@ def build_finemo_db(
     ----------
     motifs : dict
         Mapping ``motif_id -> {"cwm": (L,4) array, "seq": (L,4) array}``, e.g.
-        produced by :func:`deepISA.scoring.discover.h5_io.load_motifs`.
+        produced by :func:`deepISA.discover.h5_io.load_motifs`.
     out_path : str
         Destination H5 path.
     annotations : dict, optional
