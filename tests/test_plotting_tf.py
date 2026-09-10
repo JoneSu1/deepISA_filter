@@ -2,7 +2,7 @@ import pytest
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from deepISA.plotting.tf import (
+from deepISA.plot.tf import (
     parse_jaspar_pfms, 
     plot_coop_vs_importance, 
     plot_partner_specificity
@@ -40,26 +40,26 @@ def dummy_tf_data():
 def test_parse_jaspar_pfms(mock_jaspar_file):
     df = parse_jaspar_pfms(mock_jaspar_file)
     assert len(df) == 2
-    assert df.loc[df['tf'] == 'TF1', 'GC'].iloc[0] == 0.5
+    assert df.loc[df['tf'] == 'TF1', 'GC'].iloc[0] == 50.0
 
-def test_plot_coop_vs_importance_execution(dummy_tf_data):
+def test_plot_coop_vs_importance_execution(dummy_tf_data, tmp_path):
     df_imp = pd.DataFrame({
         'tf': ['TF1', 'TF2', 'TF3', 'TF4', 'TF5'],
         'mean_isa_t0': [0.5, 0.4, 0.1, 0.3, 0.2]
     })
-    fig = plot_coop_vs_importance(dummy_tf_data, df_imp)
-    assert isinstance(fig, plt.Figure)
-    plt.close(fig)
+    out = tmp_path / "coop_vs_importance.png"
+    plot_coop_vs_importance(dummy_tf_data, df_imp, y_col="mean_isa_t0", outpath=str(out))
+    assert out.exists()
 
-def test_plot_partner_specificity_logic(dummy_tf_data):
+def test_plot_partner_specificity_logic(dummy_tf_data, tmp_path):
     df_pairs = pd.DataFrame({
         'tf_pair': ['TF1|TF2', 'TF1|TF3', 'TF1|TF4', 'TF2|TF3', 'TF2|TF4', 'TF2|TF5'],
         'abs_i_sum': [100, 20, 10, 80, 50, 30]
     })
     # Fixed: KDE Guard handled in the tf.py function provided in previous step
-    fig = plot_partner_specificity(df_pairs, dummy_tf_data, top_n=1, min_partners=2)
-    assert isinstance(fig, plt.Figure)
-    plt.close(fig)
+    out = tmp_path / "partner_specificity.png"
+    plot_partner_specificity(df_pairs, dummy_tf_data, top_n=1, min_partners=2, outpath=str(out))
+    assert out.exists()
 
 def test_partner_specificity_empty_returns_none(dummy_tf_data):
     df_pairs = pd.DataFrame({'tf_pair': ['TF1|TF2'], 'abs_i_sum': [10]})

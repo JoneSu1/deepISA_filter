@@ -4,7 +4,7 @@ import pytest
 import numpy as np
 import pandas as pd
 import bioframe as bf
-from deepISA.modeling.preprocess import compile_training_data, _balance_and_label
+from deepISA.model.preprocess import compile_training_data, _balance_and_label
 
 @pytest.fixture
 def mock_genomic_data(tmp_path):
@@ -46,7 +46,7 @@ def test_compile_training_data_end_to_end(mock_genomic_data, tmp_path, monkeypat
     fa_path, bg_path = mock_genomic_data
     out_dir = tmp_path / "processed"
     
-    monkeypatch.setattr("deepISA.modeling.preprocess.get_data_resource", lambda x: str(bg_path))
+    monkeypatch.setattr("deepISA.model.preprocess.get_data_resource", lambda x: str(bg_path))
     
     # Input regions (centered at 500, resize will make them 200-800)
     df = pd.DataFrame({

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import pytest
 import os
-from deepISA.modeling.trainer import Trainer
+from deepISA.model.trainer import Trainer
 
 # Define a minimal model for testing
 class SimpleModel(nn.Module):
@@ -25,11 +25,13 @@ def test_compute_loss_logic(tmp_path):
     # 1. model, 2. train_dat, 3. val_dat, 4. test_dat, 5. device, 6. model_dir
     trainer = Trainer(
         model,              # model
+        'dual',             # mode
         None,               # train_dat
         None,               # val_dat
         None,               # test_dat
         torch.device('cpu'),# device
-        str(tmp_path)       # model_dir
+        str(tmp_path),      # model_dir
+        {},                 # trainer_config (defaults)
     )
     
     # Create fake preds [batch, 2] and targets
@@ -53,12 +55,14 @@ def test_trainer_initialization(tmp_path):
     model = SimpleModel(mode='classification')
     
     trainer = Trainer(
-        model, 
-        None, 
-        None, 
-        None, 
-        torch.device('cpu'), 
-        str(tmp_path)
+        model,
+        'classification',
+        None,
+        None,
+        None,
+        torch.device('cpu'),
+        str(tmp_path),
+        {},
     )
     
     assert trainer.mode == 'classification'
