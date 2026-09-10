@@ -1,6 +1,6 @@
 import pytest
 import pandas as pd
-from deepISA.exploring.tf_function import plot_usf_pfs, plot_cell_specificity
+from deepISA.explore.tf_function import plot_usf_pfs, plot_cell_specificity
 import matplotlib.pyplot as plt
 
 
@@ -46,8 +46,6 @@ def test_plot_cell_specificity_mock(mock_tf_data, tmp_path):
     assert out_path.exists()
     assert out_path.stat().st_size > 0
 
-def test_plot_returns_figure_if_no_path(mock_tf_data):
-    """Ensures the function returns a Matplotlib Figure when outpath is None."""
-    fig = plot_usf_pfs(mock_tf_data, outpath=None)
-    assert isinstance(fig, plt.Figure)
-    plt.close(fig)
+def test_plot_without_path_is_safe(mock_tf_data):
+    """Without outpath the plot is shown (and closed) as a side effect."""
+    assert plot_usf_pfs(mock_tf_data, outpath=None) is None

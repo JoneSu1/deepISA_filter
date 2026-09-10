@@ -1,4 +1,4 @@
-"""Tests for the motif-discovery subpackage (deepISA.scoring.discover).
+"""Tests for the motif-discovery subpackage (deepISA.discover).
 
 These tests exercise only the Python side -- attribution, NPZ/H5 building,
 hits parsing, motif extraction -- and never invoke the external ``modisco`` /
@@ -11,8 +11,8 @@ import pandas as pd
 import pytest
 import torch
 
-from deepISA.modeling.cnn import Conv
-from deepISA.scoring.discover import (
+from deepISA.model.cnn import Conv
+from deepISA.discover import (
     build_finemo_db,
     build_finemo_input,
     compute_attribution,
@@ -27,12 +27,6 @@ from deepISA.scoring.discover import (
     read_attribution_h5,
     select_top_regions,
     drop_non_acgt_regions,
-)
-from deepISA.scoring.filter import (
-    _get_second_max,
-    extract_regions,
-    get_attr_threshold,
-    get_slices,
 )
 
 
@@ -144,7 +138,7 @@ def _model_n_outputs(model):
 # ---------------------------------------------------------------------------
 class TestUnknownBaseImputation:
     def test_impute_is_valid_onehot_deterministic_and_nondestructive(self):
-        from deepISA.scoring.discover.attribution import _impute_unknown_bases
+        from deepISA.discover.attribution import _impute_unknown_bases
         from deepISA.utils import one_hot_encode
 
         seqs = one_hot_encode(["ACGTN", "NNNNN", "ACGTA"])
@@ -245,7 +239,7 @@ class TestModisco:
         assert T == 1
 
     def test_run_modisco_missing_binary_raises(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("deepISA.scoring.discover.modisco.resolve_cli", lambda name: None)
+        monkeypatch.setattr("deepISA.discover.modisco.resolve_cli", lambda name: None)
         with pytest.raises(RuntimeError, match="tf-modisco-lite"):
             run_modisco("o.npz", "h.npz", str(tmp_path / "out.h5"))
 
@@ -286,7 +280,7 @@ class TestFinemo:
         assert list(df["MC_ID"]) == ["p0_main", "p1_main"]
 
     def test_run_finemo_missing_binary_raises(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("deepISA.scoring.discover.modisco.resolve_cli", lambda name: None)
+        monkeypatch.setattr("deepISA.discover.modisco.resolve_cli", lambda name: None)
         with pytest.raises(RuntimeError, match="Fi-NeMo"):
             run_finemo_scan("in.npz", str(tmp_path / "out"), "db.h5")
 
@@ -320,44 +314,6 @@ class TestH5IO:
     def test_load_motifs_missing_file_raises(self):
         with pytest.raises(FileNotFoundError):
             load_motifs("/nonexistent.h5", "task")
-
-
-# ---------------------------------------------------------------------------
-# filter.py helpers (mirrors the contract tests in test_filter.py)
-# ---------------------------------------------------------------------------
-class TestFilterHelpers:
-    def test_extract_regions_columns_and_unique(self):
-        df = pd.DataFrame({
-            "region": ["chr1:0-600", "chr1:0-600", "chr2:100-700"],
-            "chrom": ["chr1", "chr1", "chr2"],
-            "start": [10, 50, 110], "end": [20, 60, 120],
-        })
-        out = extract_regions(df)
-        assert list(out.columns) == ["region", "chrom", "start", "end"]
-        assert len(out) == 2
-        assert list(out["start"]) == [0, 100]
-
-    def test_get_second_max(self):
-        arr = np.array([[0.1, 0.9, 0.2, 0.7], [5.0, 1.0, 3.0, 4.0]])
-        assert np.isclose(_get_second_max(arr, 0), 0.7)
-        assert np.isclose(_get_second_max(arr, 1), 4.0)
-
-    def test_get_attr_threshold_percentile(self):
-        score_map = {"r": np.vstack([np.arange(600, dtype=np.float32),
-                                      np.arange(1000, 1600, dtype=np.float32)])}
-        df = pd.DataFrame({"region": ["r", "r"], "start_rel": [0, 300],
-                           "end_rel": [300, 600]})
-        assert np.isclose(get_attr_threshold(df, score_map, 0, 50), 299.5)
-        assert np.isclose(get_attr_threshold(df, score_map, 1, 50), 1299.5)
-
-    def test_get_slices_shape(self):
-        score_map = {"r": np.random.default_rng(0).normal(size=(2, 600)).astype(np.float32)}
-        df = pd.DataFrame({"region": ["r", "r"], "start_rel": [10, 100],
-                           "end_rel": [25, 130]})
-        slices = list(get_slices(df, score_map))
-        assert len(slices) == 2
-        assert slices[0].shape == (2, 15)
-        assert slices[1].shape == (2, 30)
 
 
 # ---------------------------------------------------------------------------
@@ -428,7 +384,7 @@ class TestFinemoMergePrefix:
 # ---------------------------------------------------------------------------
 class TestReport:
     def test_run_report_missing_binary_raises(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("deepISA.scoring.discover.modisco.resolve_cli", lambda name: None)
+        monkeypatch.setattr("deepISA.discover.modisco.resolve_cli", lambda name: None)
         # Need a real file for the modisco_h5 existence check to pass.
         h5 = tmp_path / "r.h5"
         h5.write_bytes(b"")
@@ -468,7 +424,7 @@ class TestReport:
 # ---------------------------------------------------------------------------
 class TestH5IOReproducibility:
     def test_parse_motif_name_fallback_is_deterministic(self):
-        from deepISA.scoring.discover.h5_io import parse_motif_name
+        from deepISA.discover.h5_io import parse_motif_name
         # A path with no pattern_/subpattern_ tokens hits the fallback hash,
         # which must be deterministic across calls (regression for hash()).
         a = parse_motif_name("/weird/node", "task")

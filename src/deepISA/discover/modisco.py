@@ -7,7 +7,7 @@ still imports and the input-preparation step still runs -- only
 :func:`run_modisco` raises a clear :class:`RuntimeError` with install hints.
 
 Unlike the mc000 original, attributions here are already in deepISA's native
-``(N, 4, L)`` layout (produced by :mod:`deepISA.scoring.discover.attribution`),
+``(N, 4, L)`` layout (produced by :mod:`deepISA.discover.attribution`),
 so no transpose is needed -- we only cast and trim.
 
 CLI reference
@@ -111,7 +111,7 @@ def read_attribution_h5(
     """Load sequences + hypothetical scores for one track from an attribution H5.
 
     Accepts either the channels-first layout ``(T, N, 4, L)`` written by
-    :mod:`deepISA.scoring.discover.attribution` (``layout=channels_first`` attr)
+    :mod:`deepISA.discover.attribution` (``layout=channels_first`` attr)
     or the legacy mc000 layout ``(N, L, 4)``. Returns ``(ohe, hyp)`` both in
     ``(N, 4, L)`` layout, plus the number of tracks ``T``.
 
@@ -168,7 +168,7 @@ def prepare_modisco_input(
     ----------
     h5_path : str
         Attribution H5 produced by
-        :func:`deepISA.scoring.discover.attribution.compute_attribution`
+        :func:`deepISA.discover.attribution.compute_attribution`
         (or compatible mc000 schema).
     out_dir : str
         Directory in which to write ``ohe.npz`` and ``hyp.npz``.

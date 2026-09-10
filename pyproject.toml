@@ -46,6 +46,9 @@ dev = [
 # Install only the one(s) you intend to run:
 #   pip install -e ".[discover]"
 discover = [
+    "captum",
+    "h5py>=3.0",
+    "tangermeme>=1.0",
     "modisco-lite",               # provides the `modisco` CLI (pip package name)
     "finemo",                     # provides the `finemo` CLI (pip package name)
 ]
@@ -53,14 +56,8 @@ discover = [
 # use) API key at https://deepmind.google.com/science/alphagenome:
 #   pip install -e ".[alphagenome]"
 alphagenome = [
-    "alphagenome",                # provides AlphaGenomeAdapter (modeling/alpha_genome_adapter.py)
+    "alphagenome",                # provides AlphaGenomeAdapter (model/alpha_genome_adapter.py)
     "pyyaml",
-]
-discover = [
-    "captum",
-    "h5py>=3.0", 
-    "tangermeme>=1.0",
-    "modisco-lite",
 ]
 all = [
     "deepISA[alphagenome,discover,dev]",

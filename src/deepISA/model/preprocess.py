@@ -8,7 +8,8 @@ import json
 
 
 from deepISA.utils import (
-    get_data_resource, 
+    get_data_resource,
+    load_fasta, 
     resize_regions, 
     quantify_bw, 
     estimate_noise_threshold,
@@ -113,7 +114,7 @@ def compile_training_data(df,
     """
     df = df.copy()
     df = resize_regions(df, seq_len)
-    fasta = bf.load_fasta(fasta_path)
+    fasta = load_fasta(fasta_path)
     
     # --- Scenario 1: Bed file + BigWigs ---
     if bw_paths:

@@ -602,7 +602,7 @@ class QuickStart:
         Runs: input-set curation -> attribution (tangermeme DeepLIFT-SHAP) ->
         NPZ prep -> ``modisco motifs``. Requires the external ``modisco``
         binary on PATH (see
-        :func:`deepISA.scoring.discover.modisco.run_modisco`).
+        :func:`deepISA.discover.modisco.run_modisco`).
 
         Parameters
         ----------
@@ -743,7 +743,7 @@ class QuickStart:
         motif_db_h5 : str, optional
             Motif database H5. Defaults to ``self.files["modisco_h5"]`` (i.e.
             run :meth:`run_modisco` first). May also be a Fi-NeMo DB built by
-            :func:`deepISA.scoring.discover.finemo.build_finemo_db`.
+            :func:`deepISA.discover.finemo.build_finemo_db`.
         tracks, df_pos, n_refs, attr_batch_size :
             Forwarded to attribution. Ignored if ``self.files["attr_h5"]``
             already exists (attributions are reused).
@@ -871,7 +871,7 @@ class QuickStart:
             produced.
         task_name : str
             Prefix for motif ids when exporting the MEME file (forwarded to
-            :func:`deepISA.scoring.discover.h5_io.load_motifs`).
+            :func:`deepISA.discover.h5_io.load_motifs`).
         target_motif_len : int
             Length to normalize motifs to when exporting the MEME file.
         export_meme : bool

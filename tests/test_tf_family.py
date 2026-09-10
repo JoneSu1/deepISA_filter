@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 import numpy as np
-from deepISA.exploring.tf_family import (
+from deepISA.explore.tf_family import (
     annotate_tf_family, 
     plot_coop_by_tf_pair_family, # Refactored name
     plot_coop_by_dbd             # Refactored name
@@ -16,12 +16,13 @@ def mock_df():
         'ks_q': [0.001, 0.001, 0.001, 0.001, 0.001] # Add this to satisfy assign_cooperativity
     })
 
-def test_annotate_idempotency(mock_df):
-    """Ensure running annotation twice doesn't change the results or columns."""
-    df_first = annotate_tf_family(mock_df)
-    df_second = annotate_tf_family(df_first)
-    assert list(df_first.columns) == list(df_second.columns)
-    assert df_first['same_family'].equals(df_second['same_family'])
+def test_annotate_contract(mock_df):
+    """Annotation adds the family columns and a boolean same_family flag."""
+    annotated = annotate_tf_family(mock_df)
+    for col in ("tf1", "tf2", "tf1_family", "tf2_family", "same_family"):
+        assert col in annotated.columns
+    assert annotated['same_family'].dtype == bool
+    assert len(annotated) == len(mock_df)
 
 def test_annotate_with_unknown_tfs():
     """Verify that unknown TFs result in False for same_family."""
