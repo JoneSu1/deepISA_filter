@@ -21,7 +21,11 @@ from deepISA.score.utils_isa import (
 
 
 
-
+# TODO: implement dinucleotide shuffle / single base check-out to allow experimental design
+# TODO: build combi_pairs inside to reduce RAM
+# TODO: wben same motif is assigned to multiple TFs, will same sequence be repeated multiple times
+# TODO:
+# TODO: solve together.
 
 def make_pairs_for_region(
     region_motif_rows: pd.DataFrame,
@@ -157,7 +161,7 @@ def run_combi_isa(
     num_regions_per_batch=200,
     pred_batch_size=1024,
 ):
-    remove_if_exists(outpath)
+    remove_if_exists(outpath, "combinatorial ISA results")
     
     if isinstance(fasta, str):
         fasta=bf.load_fasta(fasta)

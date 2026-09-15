@@ -28,19 +28,14 @@ def _compute_interaction_per_track(
     normalize: bool = False,
     tau: float = 0.0,
 ) -> pd.DataFrame:
-
     isa1  = df[f"isa1_t{track_idx}"].to_numpy(dtype=float)
     isa2  = df[f"isa2_t{track_idx}"].to_numpy(dtype=float)
     both  = df[f"isa_both_t{track_idx}"].to_numpy(dtype=float)
-
     isa1_wo2 = both - isa2   # isa of motif1 when motif2 is also ablated
     isa2_wo1 = both - isa1   # isa of motif2 when motif1 is also ablated
-
     qualified = ((isa1>=isa_thresh) & (isa2>=isa_thresh) & (isa1_wo2>=0) & (isa2_wo1 >= 0))
-
     num   = isa1 + isa2 - both
     denom = isa1 + isa2 + tau
-
     vals = np.full(len(df), np.nan, dtype=float)
     if normalize:
         valid = qualified & np.isfinite(num) & np.isfinite(denom) & (denom > 0)
@@ -67,7 +62,7 @@ def get_isa_thresh(df_single_isa, tracks, null_threshold):
     return isa_thresh
 
 
-# TODO: when normalize=True, tau_map must be provided
+
 def calc_interaction(
     combi_isa_path: str,
     tracks: list[int],
@@ -76,10 +71,20 @@ def calc_interaction(
     single_isa_path: str | None = None,
     normalize: bool = False,
 ) -> None:
+    """
+    
+    """
+    
     if not os.path.exists(combi_isa_path):
         raise FileNotFoundError(f"File not found: {combi_isa_path}")
     
-    # Determine isa_thresh: quantile-based or explicit
+    if normalize and tau_map is None:
+        raise ValueError(
+            "normalize=True but tau_map is None. "
+            "Provide tau_map to normalize interactions."
+        )
+        
+    # Determine isa_thresh: quantile-based
     if isa_thresh_quantile is not None:
         if single_isa_path is None:
             raise ValueError(

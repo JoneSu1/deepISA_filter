@@ -159,8 +159,8 @@ def map_motifs(regions_df,
         score_thresh=motif_score_thresh,
         remap_path=remap_path
     )
-    logger.info(f"Mapped motifs saved to {motif_outpath}.")
     annotator.annotate(regions_df, motif_outpath)
+    logger.info(f"Mapped motifs saved to {motif_outpath}.")
     motif_df = pd.read_csv(motif_outpath)
     non_motif_df = get_non_motifs(regions_df, motif_df)
     non_motif_df.to_csv(non_motif_outpath, index=False)

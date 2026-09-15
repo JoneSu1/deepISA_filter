@@ -260,7 +260,8 @@ class QuickStart:
         
         self._validate_start_from(start_from)
         self._check_isa_dependencies(start_from)
-
+        
+        # resolve df_pos
         if df_pos is None:
             if self.df_labeled is not None and 'target_class' in self.df_labeled.columns:
                 df_pos = self.df_labeled[self.df_labeled['target_class'] == 1].copy()
@@ -299,10 +300,11 @@ class QuickStart:
         # 2. calc pred_orig
         if start_idx <= ISA_STAGES.index("calc_orig"):
             logger.info("Running stage: calc_orig")
+            df_pos["region"]=df_pos["chrom"] + ":" + df_pos["start"].astype(str) + "-" + df_pos["end"].astype(str)
             calc_pred_orig(
                 model=self.model,
                 fasta=self.fasta_path,
-                motif_locs_path=self.files["motif_locs"],
+                regions_df=df_pos,
                 tracks=self.tracks,
                 outpath=self.files["pred_orig"],
                 device=self.device,
@@ -364,7 +366,7 @@ class QuickStart:
                 tracks=self.tracks,
                 num_regions_per_batch=isa_config.get("num_regions_per_batch", 200),
                 pred_batch_size=isa_config.get("pred_batch_size", 1024),
-                n_samples=isa_config.get("n_samples", 8192),
+                n_samples=isa_config.get("n_samples", 2048),
                 n_bins=isa_config.get("n_bins", 20),
             )
         else:
@@ -401,8 +403,6 @@ class QuickStart:
                     self.files["isa_combi"],
                     outpath=self.files["coop_tf_pair"].replace(".csv", f"_t{t}.csv"),
                     level="tf_pair",   
-                    # add track suffix to output paths        
-                    non_motif_interaction_path=self.files["non_motif_interaction"] if isa_config.get("null_interaction", "distant_pairs") == "non_motif_interaction" else None,
                     track_idx=t,
                     min_count=isa_config.get("min_count", 10),
                     q_val_thresh=isa_config.get("q_val_thresh", 0.1),
@@ -412,7 +412,6 @@ class QuickStart:
                     self.files["isa_combi"],             
                     outpath=self.files["coop_tf"].replace(".csv", f"_t{t}.csv"),
                     level="tf",
-                    non_motif_interaction_path=self.files["non_motif_interaction"] if isa_config.get("null_interaction", "distant_pairs") == "non_motif_interaction" else None,
                     track_idx=t,
                     min_count=isa_config.get("min_count", 10),
                     q_val_thresh=isa_config.get("q_val_thresh", 0.1),

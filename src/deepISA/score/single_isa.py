@@ -31,7 +31,7 @@ from deepISA.score.utils_isa import (
 def calc_pred_orig(
     model,
     fasta,
-    motif_locs_path,
+    regions_df,
     tracks,
     outpath,
     device,
@@ -40,8 +40,7 @@ def calc_pred_orig(
     remove_if_exists(outpath, label="prediction of original regions")
     if isinstance(fasta, str):
         fasta = bf.load_fasta(fasta)
-    locs_df = pd.read_csv(motif_locs_path)
-    uniq_regions = list(pd.unique(locs_df['region']))
+    uniq_regions = list(pd.unique(regions_df['region']))
     if len(uniq_regions) == 0:
         raise ValueError("No regions provided to compute original predictions.")
 
@@ -68,7 +67,7 @@ def run_single_isa(
     num_regions_per_batch=200,
     pred_batch_size=1024,    
 ):
-    remove_if_exists(outpath, label="single ISA file")
+    remove_if_exists(outpath, label="single ISA results")
 
     if isinstance(fasta, str):
         fasta=bf.load_fasta(fasta)
