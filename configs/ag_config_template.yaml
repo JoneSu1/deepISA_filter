@@ -1,6 +1,9 @@
 # AlphaGenome backend config for deepISA
 # ─────────────────────────────────────────────────────────────────────────────
-# Usage:
+# QuickStart usage (recommended — seq_len is auto-synced to your regions):
+#   pipe.define_model(model_obj="AlphaGenome", alpha_genome_config="configs/ag_config_template.yaml")
+#
+# Direct usage:
 #   from deepISA.model.alpha_genome_adapter import AlphaGenomeAdapter
 #   adapter = AlphaGenomeAdapter("configs/ag_config_template.yaml")
 #
@@ -16,16 +19,16 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Option A — Single track  (most common, backward-compatible format)
 # ─────────────────────────────────────────────────────────────────────────────
-api_key: YOUR_API_KEY_HERE     # get one free (non-commercial): https://deepmind.google.com/science/alphagenome
-                               # or ${ALPHAGENOME_API_KEY} to read it from the environment
+api_key: ${ALPHAGENOME_API_KEY}  # env var (recommended): os.environ["ALPHAGENOME_API_KEY"]="AIza..."
+                               # get one free (non-commercial): https://deepmind.google.com/science/alphagenome
+                               # or paste the key directly here: api_key: AIza...
 output_type: DNASE             # DNASE | ATAC | CAGE | RNA_SEQ | CHIP_TF | CHIP_HISTONE | PROCAP
 biosample_name: GM12878        # exact string from ag_biosample_reference.csv
 
 # Optional — defaults shown:
 context_len: 16384             # AlphaGenome input length (do not change)
-seq_len: 600                   # deepISA region length (match your training)
-aggregation: sum               # how to aggregate the seq_len window: sum | mean | max
-                               # (log1p is applied after aggregation; sum → log1p(sum))
+seq_len: 600                   # region length (QuickStart auto-syncs this to your regions)
+aggregation: sum               # FIXED — only 'sum' is supported (log1p of the summed window)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Resilience knobs — safe to delete entirely (defaults below apply)

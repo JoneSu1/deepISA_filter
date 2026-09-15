@@ -138,12 +138,30 @@ class QuickStart:
     def define_model(self, 
                      model_config=None,
                      model_obj=None, 
-                     mode='dual'):
+                     mode='dual',
+                     alpha_genome_config=None):
         """
-        Internalizes a model. 
-        Pass a pre-instantiated object (e.g. AlphaGenome) OR 
-        pass params (ks, cs, ds, seq_len) to build the internal Conv model.
+        Internalizes a model.
+        Pass a pre-instantiated object, OR pass params (ks, cs, ds, seq_len) to
+        build the internal Conv model, OR pass model_obj="AlphaGenome" with
+        alpha_genome_config (YAML path or dict) to use the AlphaGenome API
+        backend:
+
+            pipe.define_model(model_obj="AlphaGenome", alpha_genome_config=config)
+
+        The config is materialized to <model_dir>/ag_config.yaml (so the
+        persistent cache lives next to it) and seq_len is auto-synced to the
+        pipeline's region length. Only output_type / biosample_name (or a
+        tracks list) are scientific choices; everything else has defaults.
         """
+        if isinstance(model_obj, str):
+            if model_obj.strip().lower() != "alphagenome":
+                raise ValueError(
+                    f"Unknown model_obj={model_obj!r}. Pass a model instance, "
+                    "'AlphaGenome', or use model_config to build a Conv."
+                )
+            self._define_alphagenome(alpha_genome_config)
+            return
         self.mode = mode
         if model_obj is not None:
             self.model = model_obj.to(self.device)
@@ -155,7 +173,61 @@ class QuickStart:
             logger.info(f"Internal Conv model initialized. Receptive field: {self.model.rf}")
             with open(os.path.join(self.model_dir, "model_config.json"), 'w') as f:
                 json.dump(model_config, f, indent=4)
-                
+
+    @staticmethod
+    def _default_tracks(model):
+        """[0] for single-output models; every track for multi-track backends."""
+        n = getattr(model, "n_tracks", None)
+        return list(range(n)) if n else [0]
+
+    def _infer_region_len(self) -> int:
+        """Region length of the pipeline's input df (mode); 600 as fallback."""
+        try:
+            lens = (self.df_input["end"] - self.df_input["start"]).astype(int)
+            if len(lens):
+                return int(lens.mode().iloc[0])
+        except Exception:
+            pass
+        return 600
+
+    def _define_alphagenome(self, alpha_genome_config):
+        """Build the AlphaGenome adapter backend from a YAML path or dict."""
+        import yaml
+        from deepISA.model.alpha_genome_adapter import AlphaGenomeAdapter
+
+        if alpha_genome_config is None:
+            raise ValueError(
+                "model_obj='AlphaGenome' requires alpha_genome_config "
+                "(a YAML path or a dict)."
+            )
+        if isinstance(alpha_genome_config, dict):
+            cfg = dict(alpha_genome_config)
+        else:
+            with open(alpha_genome_config) as f:
+                cfg = yaml.safe_load(f) or {}
+
+        # The pipeline's region length is the source of truth — a mismatched
+        # seq_len would make every forward() fail the length check.
+        seq_len = self._infer_region_len()
+        if cfg.get("seq_len") not in (None, seq_len):
+            logger.info(
+                f"AlphaGenome seq_len synced {cfg.get('seq_len')} -> {seq_len} "
+                "to match the pipeline regions."
+            )
+        cfg["seq_len"] = seq_len
+
+        # Materialize next to the model artefacts so the adapter's persistent
+        # cache has a stable home across sessions (crash-safe resume).
+        cfg_path = os.path.join(self.model_dir, "ag_config.yaml")
+        with open(cfg_path, "w") as f:
+            yaml.dump(cfg, f, default_flow_style=False)
+
+        self.model = AlphaGenomeAdapter(cfg_path).to(self.device)
+        logger.info(
+            f"AlphaGenome backend ready (n_tracks={self.model.n_tracks}). "
+            f"Config + persistent cache live next to {cfg_path}."
+        )
+        return self.model
 
     def train(self, 
               trainer_config=None,
@@ -272,7 +344,9 @@ class QuickStart:
         else:
             logger.info(f"{len(df_pos)} positive regions provided for ISA.")
                         
-        self.tracks = isa_config.get('tracks', [0])
+        # Default tracks: all of them for multi-track backends (e.g. an
+        # AlphaGenome adapter exposes n_tracks), [0] for single-output models.
+        self.tracks = isa_config.get('tracks', self._default_tracks(self.model))
         start_idx = ISA_STAGES.index(start_from)
 
         # 1. Motif Mapping

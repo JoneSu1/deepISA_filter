@@ -8,7 +8,7 @@ Single track (backward-compatible):
     biosample_name: GM12878
     context_len: 16384   # optional, default 16384
     seq_len: 600          # optional, default 600
-    aggregation: sum      # optional: sum | mean | max (default sum)
+    aggregation: sum      # fixed: only 'sum' is supported (log1p of the summed window)
 
 Multi-track:
     api_key: YOUR_KEY
@@ -25,8 +25,8 @@ Multi-track:
 
 Every sequence makes exactly ONE API call regardless of how many tracks are
 configured.  Columns in the output tensor are ordered by the `tracks` list.
-`aggregation` reduces the seq_len window per track and ``log1p`` is applied
-afterwards, so the default ``sum`` yields ``log1p(sum)``.
+Each track is scored as ``log1p(sum`` of the seq_len window``) — ``aggregation``
+is fixed to ``sum``; mean/max were removed.
 
 Resilience (all optional keys with sensible defaults; old YAMLs work unchanged)
 ------------------------------------------------------------------------------
@@ -179,6 +179,29 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return out
 
 
+_API_KEY_HELP = (
+    "AlphaGenome API key is not set.\n"
+    "1. Apply for one (free for non-commercial use):\n"
+    "   https://deepmind.google.com/science/alphagenome\n"
+    '   -> "Get API key" -> sign in with a Google account -> accept the terms.\n'
+    "2. Then provide it ONE of these ways:\n"
+    '   - notebook: os.environ["ALPHAGENOME_API_KEY"] = "AIza..."\n'
+    "     and keep 'api_key: ${ALPHAGENOME_API_KEY}' in the config\n"
+    "   - cluster:  export ALPHAGENOME_API_KEY=AIza...\n"
+    "   - or put the key directly in the config: api_key: AIza..."
+)
+
+
+def _check_api_key(key: str) -> None:
+    """Fail locally (with instructions) instead of remotely (with a gRPC error)."""
+    if (
+        not key
+        or key == "YOUR_API_KEY_HERE"
+        or (key.startswith("${") and key.endswith("}"))
+    ):
+        raise ValueError(_API_KEY_HELP)
+
+
 def load_config(path: str) -> dict[str, Any]:
     with open(path) as f:
         cfg = yaml.safe_load(f)
@@ -194,10 +217,10 @@ def load_config(path: str) -> dict[str, Any]:
         cfg["tracks"] = [{"output_type": cfg["output_type"],
                           "biosample_name": cfg["biosample_name"]}]
     cfg = _deep_merge(_DEFAULTS, cfg)
-    if cfg["aggregation"] not in ("sum", "mean", "max"):
+    if cfg["aggregation"] != "sum":
         raise ValueError(
-            f"aggregation must be one of 'sum' | 'mean' | 'max', "
-            f"got {cfg['aggregation']!r}"
+            "aggregation is fixed to 'sum' (log1p of the summed window); "
+            f"mean/max are no longer supported, got {cfg['aggregation']!r}"
         )
     if cfg["seq_len"] > cfg["context_len"]:
         raise ValueError(
@@ -205,6 +228,7 @@ def load_config(path: str) -> dict[str, Any]:
             f"({cfg['context_len']})"
         )
     cfg["api_key"] = os.path.expandvars(cfg["api_key"])
+    _check_api_key(cfg["api_key"])
     return cfg
 
 
@@ -552,14 +576,12 @@ class AlphaGenomeAdapter(nn.Module):
         return values
 
     def _extract_values(self, output) -> list:
-        agg_fn = {"sum": np.sum, "mean": np.mean, "max": np.max}[
-            self._cfg["aggregation"]
-        ]
+        # aggregation is fixed: log1p of the summed seq_len window per track
         parts = []
         for attr, col_idx in self._extraction_plan:
             track_data = getattr(output, attr)
             window = track_data.values[self._start_idx:self._end_idx, :]
-            parts.append(np.log1p(agg_fn(window[:, col_idx], axis=0)))
+            parts.append(np.log1p(np.sum(window[:, col_idx], axis=0)))
         return np.concatenate(parts).tolist()
 
     # ── Layer 2: resilient API call ───────────────────────────────────────────

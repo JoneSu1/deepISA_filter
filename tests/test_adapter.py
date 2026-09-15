@@ -157,19 +157,34 @@ def test_load_config_missing_required_key(tmp_path):
         load_config(str(p))
 
 
-def test_load_config_rejects_unknown_aggregation(tmp_path):
-    """Regression: the documented aggregation knob is validated, not silently ignored."""
-    cfg = {
-        "api_key": "k",
-        "output_type": "DNASE",
-        "biosample_name": "GM12878",
-        "aggregation": "median",
-    }
-    p = tmp_path / "cfg.yaml"
-    p.write_text(yaml.dump(cfg))
+def test_load_config_rejects_non_sum_aggregation(tmp_path):
+    """aggregation is fixed to 'sum' — mean/max/anything else is rejected."""
+    for bad in ("median", "mean", "max"):
+        cfg = {
+            "api_key": "k",
+            "output_type": "DNASE",
+            "biosample_name": "GM12878",
+            "aggregation": bad,
+        }
+        p = tmp_path / "cfg.yaml"
+        p.write_text(yaml.dump(cfg))
 
-    with pytest.raises(ValueError, match="aggregation"):
-        load_config(str(p))
+        with pytest.raises(ValueError, match="fixed to 'sum'"):
+            load_config(str(p))
+
+
+def test_load_config_missing_key_gives_instructions(tmp_path):
+    """An unset/placeholder key fails locally with application instructions,
+    not remotely with an opaque gRPC auth error."""
+    for bad_key in ("${DEFINITELY_UNSET_VAR}", "YOUR_API_KEY_HERE", ""):
+        p = tmp_path / "cfg.yaml"
+        p.write_text(yaml.dump({
+            "api_key": bad_key,
+            "output_type": "DNASE",
+            "biosample_name": "GM12878",
+        }))
+        with pytest.raises(ValueError, match="deepmind.google.com/science/alphagenome"):
+            load_config(str(p))
 
 
 def test_load_config_fills_resilience_defaults(tmp_path):
@@ -275,31 +290,6 @@ def test_adapter_default_sum_is_log1p_of_sum(tmp_path):
 
         expected = np.log1p(signal_value * 600 * 1)
         assert float(out[0, 0]) == pytest.approx(expected)
-
-
-def test_adapter_aggregation_mean(tmp_path):
-    """Regression: aggregation='mean' averages the window instead of summing it."""
-    with _mocked_alphagenome() as mock_dc:
-        mock_dc.create.return_value.predict_sequence.return_value = (
-            _fake_predict_output(2.0))
-        adapter = _make_adapter(tmp_path, mock_dc=mock_dc, aggregation="mean")
-
-        x = torch.from_numpy(one_hot_encode(["ACGT" * 150]))
-        out = adapter(x)
-
-        assert float(out[0, 0]) == pytest.approx(np.log1p(2.0))   # not log1p(2.0 * 600)
-
-
-def test_adapter_aggregation_max(tmp_path):
-    with _mocked_alphagenome() as mock_dc:
-        mock_dc.create.return_value.predict_sequence.return_value = (
-            _fake_predict_output(2.0))
-        adapter = _make_adapter(tmp_path, mock_dc=mock_dc, aggregation="max")
-
-        x = torch.from_numpy(one_hot_encode(["ACGT" * 150]))
-        out = adapter(x)
-
-        assert float(out[0, 0]) == pytest.approx(np.log1p(2.0))
 
 
 def test_adapter_cache_deduplicates_api_calls(tmp_path):
@@ -587,26 +577,52 @@ def test_cache_disabled_means_no_persistence(tmp_path):
 
 
 def test_cache_fingerprint_isolates_configs(tmp_path):
-    """Same sequence + same cache file but different aggregation → different
+    """Same sequence + same cache file but different tracks → different
     fingerprint → no false cache hit (cache keys hash the full request, not
     just the DNA)."""
     x = torch.from_numpy(one_hot_encode(["ACGT" * 150]))
     shared = str(tmp_path / "shared.cache.sqlite")
-    cache_cfg = {"cache": {"enabled": True, "path": shared}}
+
+    def _cfg(output_type):
+        return {
+            "api_key": "k",
+            "output_type": output_type,
+            "biosample_name": "GM12878",
+            "context_len": 16384, "seq_len": 600, "aggregation": "sum",
+            "cache": {"enabled": True, "path": shared},
+        }
 
     with _mocked_alphagenome() as mock_dc:
-        mock_dc.create.return_value.predict_sequence.side_effect = \
-            lambda *a, **k: _fake_predict_output(2.0)
-        sum_ad = _make_adapter(tmp_path, mock_dc=mock_dc, aggregation="sum",
-                               extra_cfg=cache_cfg, cfg_name="sum.yaml")
-        mean_ad = _make_adapter(tmp_path, mock_dc=mock_dc, aggregation="mean",
-                                extra_cfg=cache_cfg, cfg_name="mean.yaml")
-        v_sum = sum_ad(x)
-        v_mean = mean_ad(x)
+        client = mock_dc.create.return_value
+        # metadata + probe outputs cover both assays
+        client.output_metadata.return_value.concatenate.return_value = pd.concat(
+            [_fake_metadata("GM12878", "DNASE"), _fake_metadata("GM12878", "CAGE")],
+            ignore_index=True)
 
-        assert float(v_sum[0, 0]) == pytest.approx(np.log1p(1200.0))
-        assert float(v_mean[0, 0]) == pytest.approx(np.log1p(2.0))
-        assert mean_ad.stats["api_calls"] == 2       # probe + real call (no false hit)
+        def combined_predict(*a, **k):
+            out = MagicMock()
+            out.dnase = _fake_track_output(16384, 1, 2.0, "GM12878")
+            out.cage = _fake_track_output(16384, 2, 2.0, "GM12878")
+            return out
+
+        client.predict_sequence.side_effect = combined_predict
+
+        from deepISA.model.alpha_genome_adapter import AlphaGenomeAdapter
+
+        dnase_yaml = tmp_path / "dnase.yaml"
+        dnase_yaml.write_text(yaml.dump(_cfg("DNASE")))
+        dnase_ad = AlphaGenomeAdapter(str(dnase_yaml))
+        dnase_ad(x)   # fills the shared cache for the DNASE request
+
+        # same sequence, same cache FILE, but a CAGE request → different
+        # fingerprint → must be a cache MISS (probe + one real API call)
+        cage_yaml = tmp_path / "cage.yaml"
+        cage_yaml.write_text(yaml.dump(_cfg("CAGE")))
+        cage_ad = AlphaGenomeAdapter(str(cage_yaml))
+        cage_ad(x)
+
+        assert cage_ad.stats["api_calls"] == 2       # probe + real call (no false hit)
+        assert cage_ad.stats["cache_hits"] == 0
 
 
 def test_stats_counters_sane(tmp_path):
@@ -713,7 +729,7 @@ def test_run_single_isa_with_adapter_end_to_end(tmp_path):
         calc_pred_orig(
             model=adapter,
             fasta=fasta,
-            motif_locs_path=str(tmp_path / "motif_locs.csv"),
+            regions_df=pd.read_csv(tmp_path / "motif_locs.csv"),
             tracks=[0],
             outpath=pred_orig,
             device="cpu",
@@ -740,3 +756,96 @@ def test_run_single_isa_with_adapter_end_to_end(tmp_path):
         assert df["isa_t0"].iloc[0] == pytest.approx(expected_isa, abs=1e-4)
         # probe + region prediction + one ablated prediction = 3 API calls
         assert mock_dc.create.return_value.predict_sequence.call_count == 3
+
+
+# ── QuickStart integration: pipe.define_model("AlphaGenome", ...) ────────────
+
+
+def _make_pipe(tmp_path):
+    """Minimal QuickStart instance (no model, tiny regions df)."""
+    from deepISA.quickstart import QuickStart
+    df = pd.DataFrame({
+        "chrom": ["chr1"] * 3,
+        "start": [1000, 5000, 9000],
+        "end":   [1600, 5600, 9600],   # 600 bp regions
+    })
+    return QuickStart(results_dir=str(tmp_path / "res"),
+                      fasta_path=str(tmp_path / "hg.fa"),
+                      df_input=df, device="cpu")
+
+
+def test_define_model_alphagenome_from_dict(tmp_path):
+    """model_obj='AlphaGenome' + dict config: adapter built, config materialized
+    to model_dir with seq_len auto-synced to the pipeline regions."""
+    with _mocked_alphagenome() as mock_dc:
+        mock_dc.create.return_value.output_metadata.return_value.concatenate.return_value = (
+            _fake_metadata("GM12878", "DNASE"))
+        mock_dc.create.return_value.predict_sequence.return_value = (
+            _fake_predict_output(1.0))
+        pipe = _make_pipe(tmp_path)
+
+        pipe.define_model(model_obj="AlphaGenome", alpha_genome_config={
+            "api_key": "k", "output_type": "DNASE",
+            "biosample_name": "GM12878", "seq_len": 1234,   # wrong on purpose
+        })
+
+        assert pipe.model is not None
+        assert pipe.model.n_tracks == 1
+        materialized = tmp_path / "res" / "Models" / "ag_config.yaml"
+        assert materialized.exists()
+        import yaml as _yaml
+        cfg = _yaml.safe_load(materialized.read_text())
+        assert cfg["seq_len"] == 600        # synced from df_input regions (not 1234)
+        assert cfg["output_type"] == "DNASE"
+        assert (tmp_path / "res" / "Models" / "ag_config.cache.sqlite").exists()
+
+
+def test_define_model_alphagenome_from_path_does_not_mutate_source(tmp_path):
+    """A YAML path is copied into model_dir (seq_len synced there); the user's
+    original file is left untouched."""
+    with _mocked_alphagenome() as mock_dc:
+        mock_dc.create.return_value.output_metadata.return_value.concatenate.return_value = (
+            _fake_metadata("GM12878", "DNASE"))
+        mock_dc.create.return_value.predict_sequence.return_value = (
+            _fake_predict_output(1.0))
+        src = tmp_path / "user_config.yaml"
+        src.write_text(yaml.dump({
+            "api_key": "k", "output_type": "DNASE",
+            "biosample_name": "GM12878", "seq_len": 999,
+        }))
+
+        pipe = _make_pipe(tmp_path)
+        pipe.define_model(model_obj="AlphaGenome", alpha_genome_config=str(src))
+
+        import yaml as _yaml
+        original = _yaml.safe_load(src.read_text())
+        assert original["seq_len"] == 999           # source untouched
+        materialized = _yaml.safe_load(
+            (tmp_path / "res" / "Models" / "ag_config.yaml").read_text())
+        assert materialized["seq_len"] == 600       # synced copy
+
+
+def test_define_model_rejects_unknown_string(tmp_path):
+    pipe = _make_pipe(tmp_path)
+    with pytest.raises(ValueError, match="Unknown model_obj"):
+        pipe.define_model(model_obj="GPT4")
+
+
+def test_define_model_alphagenome_requires_config(tmp_path):
+    pipe = _make_pipe(tmp_path)
+    with pytest.raises(ValueError, match="alpha_genome_config"):
+        pipe.define_model(model_obj="AlphaGenome")
+
+
+def test_default_tracks_follows_backend_width():
+    from deepISA.quickstart import QuickStart
+
+    class FakeAG:
+        n_tracks = 4
+
+    class FakeConv:
+        pass
+
+    assert QuickStart._default_tracks(FakeAG()) == [0, 1, 2, 3]
+    assert QuickStart._default_tracks(FakeConv()) == [0]
+    assert QuickStart._default_tracks(None) == [0]
