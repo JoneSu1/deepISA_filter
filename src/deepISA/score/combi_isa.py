@@ -1,6 +1,7 @@
 
 import pandas as pd
 import bioframe as bf
+from deepISA.utils import load_fasta
 from loguru import logger
 from itertools import combinations
 
@@ -164,7 +165,7 @@ def run_combi_isa(
     remove_if_exists(outpath, "combinatorial ISA results")
     
     if isinstance(fasta, str):
-        fasta=bf.load_fasta(fasta)
+        fasta=load_fasta(fasta)
 
     df_motif_single_isa = pd.read_csv(single_isa_path)
     if df_motif_single_isa.empty:

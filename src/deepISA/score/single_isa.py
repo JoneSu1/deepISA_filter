@@ -1,6 +1,7 @@
 import pandas as pd
 from loguru import logger
-import bioframe as bf    
+import bioframe as bf
+from deepISA.utils import load_fasta    
 
 # Internal imports
 from deepISA.model.predict import compute_predictions 
@@ -39,7 +40,7 @@ def calc_pred_orig(
 ):
     remove_if_exists(outpath, label="prediction of original regions")
     if isinstance(fasta, str):
-        fasta = bf.load_fasta(fasta)
+        fasta = load_fasta(fasta)
     uniq_regions = list(pd.unique(regions_df['region']))
     if len(uniq_regions) == 0:
         raise ValueError("No regions provided to compute original predictions.")
@@ -70,7 +71,7 @@ def run_single_isa(
     remove_if_exists(outpath, label="single ISA results")
 
     if isinstance(fasta, str):
-        fasta=bf.load_fasta(fasta)
+        fasta=load_fasta(fasta)
     
     orig_pred_map = load_pred_orig(pred_orig_path, tracks)
     locs_df = pd.read_csv(motif_locs_path)

@@ -3,6 +3,7 @@ import json
 import numpy as np
 import pandas as pd
 import bioframe as bf
+from deepISA.utils import load_fasta
 from loguru import logger
 from itertools import combinations
 
@@ -246,7 +247,7 @@ def _calc_non_motif_interaction(
     remove_if_exists(outpath, label="non-motif interaction file")
 
     if isinstance(fasta, str):
-        fasta = bf.load_fasta(fasta)
+        fasta = load_fasta(fasta)
 
     df_combi = pd.read_csv(combi_isa_path)
     target_distances = df_combi["distance"].dropna().to_numpy()
@@ -341,7 +342,7 @@ def calc_non_motif_stats(
     (non_motif_isa_outpath, non_motif_interaction_outpath, tau_map)
     """
     if isinstance(fasta, str):
-        fasta = bf.load_fasta(fasta)
+        fasta = load_fasta(fasta)
 
     isa_path = _calc_non_motif_isa(
         model=model, fasta=fasta,
