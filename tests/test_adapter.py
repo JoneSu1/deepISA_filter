@@ -849,3 +849,55 @@ def test_default_tracks_follows_backend_width():
     assert QuickStart._default_tracks(FakeAG()) == [0, 1, 2, 3]
     assert QuickStart._default_tracks(FakeConv()) == [0]
     assert QuickStart._default_tracks(None) == [0]
+
+
+# ── model_version switching ──────────────────────────────────────────────────
+
+
+def test_model_version_passed_to_create(tmp_path):
+    """model_version: 'FOLD_0' resolves via dna_client.ModelVersion and is
+    forwarded to every dna_client.create call (initial + rebuilds)."""
+    with _mocked_alphagenome() as mock_dc:
+        mock_dc.create.return_value.output_metadata.return_value.concatenate.return_value = (
+            _fake_metadata("GM12878", "DNASE"))
+        mock_dc.create.return_value.predict_sequence.return_value = (
+            _fake_predict_output(1.0))
+        cfg = _fast_retry_cfg()
+        cfg["client"]["max_calls"] = 1     # force one rebuild too
+        adapter = _make_adapter(tmp_path, mock_dc=mock_dc,
+                                extra_cfg={"model_version": "FOLD_0", **cfg})
+        adapter(torch.from_numpy(one_hot_encode(["ACGT" * 150])))
+
+        for call in mock_dc.create.call_args_list:
+            assert "model_version" in call.kwargs
+            assert call.kwargs["model_version"] is not None
+
+
+def test_model_version_invalid_name_raises(tmp_path):
+    with _mocked_alphagenome() as mock_dc:
+        mock_dc.ModelVersion.__getitem__.side_effect = KeyError("NOPE")
+        with pytest.raises(ValueError, match="model_version"):
+            _make_adapter(tmp_path, mock_dc=mock_dc,
+                          extra_cfg={"model_version": "NOPE"})
+
+
+def test_cache_fingerprint_includes_model_version(tmp_path):
+    """Same sequence + same cache file but a different model_version → cache
+    MISS (different model fold must never reuse another fold's predictions)."""
+    x = torch.from_numpy(one_hot_encode(["ACGT" * 150]))
+    shared = str(tmp_path / "shared.cache.sqlite")
+    cache_cfg = {"cache": {"enabled": True, "path": shared}}
+
+    with _mocked_alphagenome() as mock_dc:
+        mock_dc.create.return_value.predict_sequence.return_value = (
+            _fake_predict_output(1.0))
+        default_ad = _make_adapter(tmp_path, mock_dc=mock_dc, extra_cfg=cache_cfg,
+                                   cfg_name="def.yaml")
+        default_ad(x)
+
+        fold_ad = _make_adapter(tmp_path, mock_dc=mock_dc,
+                                extra_cfg={**cache_cfg, "model_version": "FOLD_0"},
+                                cfg_name="fold.yaml")
+        fold_ad(x)
+        assert fold_ad.stats["api_calls"] == 2       # probe + real call: no false hit
+        assert fold_ad.stats["cache_hits"] == 0

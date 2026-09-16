@@ -301,7 +301,8 @@ class QuickStart:
     
     
     def _check_isa_dependencies(self, start_from):
-        if start_from == "map_motifs":
+        # "map_motifs" and "calc_orig" start from raw inputs — nothing to check.
+        if start_from in ("map_motifs", "calc_orig"):
             return
         if start_from == "single_isa":
             required = [self.files["motif_locs"], self.files["pred_orig"]]

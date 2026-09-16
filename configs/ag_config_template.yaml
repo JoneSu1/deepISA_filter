@@ -26,6 +26,7 @@ output_type: DNASE             # DNASE | ATAC | CAGE | RNA_SEQ | CHIP_TF | CHIP_
 biosample_name: GM12878        # exact string from ag_biosample_reference.csv
 
 # Optional — defaults shown:
+model_version: null            # optional: ALL_FOLDS | FOLD_0..FOLD_3 (default = ensembled)
 context_len: 16384             # AlphaGenome input length (do not change)
 seq_len: 600                   # region length (QuickStart auto-syncs this to your regions)
 aggregation: sum               # FIXED — only 'sum' is supported (log1p of the summed window)

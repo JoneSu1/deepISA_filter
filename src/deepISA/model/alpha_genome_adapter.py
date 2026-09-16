@@ -4,6 +4,7 @@ Config formats
 --------------
 Single track (backward-compatible):
     api_key: YOUR_KEY            # or ${ALPHAGENOME_API_KEY} (env var expanded)
+    model_version: null        # optional: ALL_FOLDS | FOLD_0..FOLD_3 (default ensemble)
     output_type: DNASE
     biosample_name: GM12878
     context_len: 16384   # optional, default 16384
@@ -86,6 +87,7 @@ import yaml
 from loguru import logger
 
 _DEFAULTS: dict[str, Any] = {
+    "model_version": None,
     "context_len": 16384,
     "seq_len": 600,
     "aggregation": "sum",
@@ -261,6 +263,18 @@ except ImportError:
     OutputType = None
 
 
+def _resolve_model_version(value):
+    """Config value (None | enum | enum-member name) -> what dna_client.create expects."""
+    if value is None or not isinstance(value, str):
+        return value
+    try:
+        return dna_client.ModelVersion[value]
+    except KeyError:
+        members = [m.name for m in dna_client.ModelVersion]
+        raise ValueError(
+            f"model_version {value!r} is not one of {members}") from None
+
+
 class _SqliteCache:
     """Write-through SQLite cache: one row per request fingerprint.
 
@@ -392,7 +406,9 @@ class AlphaGenomeAdapter(nn.Module):
         # dna_client.create accepts a client-wide `timeout` (seconds) that acts
         # as the per-RPC deadline — a single call can never hang forever; the
         # retry state machine takes over when the deadline trips.
-        self._dna_model = dna_client.create(cfg["api_key"], timeout=self._rpc_timeout)
+        self._dna_model = dna_client.create(
+            cfg["api_key"], timeout=self._rpc_timeout,
+            model_version=_resolve_model_version(cfg["model_version"]))
         self._client_created_at = time.time()
         self._client_calls = 0
 
@@ -545,6 +561,7 @@ class AlphaGenomeAdapter(nn.Module):
         payload = {
             "adapter_cache_schema": 1,
             "model": "alphagenome-api",
+            "model_version": self._cfg.get("model_version"),
             "sequence": raw_seq,
             "context_len": self._context_len,
             "seq_len": self._seq_len,
@@ -598,7 +615,9 @@ class AlphaGenomeAdapter(nn.Module):
         for attempt in range(5):
             try:
                 self._dna_model = dna_client.create(
-                    self._cfg["api_key"], timeout=self._rpc_timeout
+                    self._cfg["api_key"], timeout=self._rpc_timeout,
+                    model_version=_resolve_model_version(
+                        self._cfg["model_version"]),
                 )
                 self._client_created_at = time.time()
                 self._client_calls = 0
