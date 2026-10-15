@@ -4,11 +4,12 @@ Config formats
 --------------
 Single track (backward-compatible):
     api_key: YOUR_KEY            # or ${ALPHAGENOME_API_KEY} (env var expanded)
+    model_version: null        # optional: ALL_FOLDS | FOLD_0..FOLD_3 (default ensemble)
     output_type: DNASE
     biosample_name: GM12878
     context_len: 16384   # optional, default 16384
     seq_len: 600          # optional, default 600
-    aggregation: sum      # optional: sum | mean | max (default sum)
+    aggregation: sum      # fixed: only 'sum' is supported (log1p of the summed window)
 
 Multi-track:
     api_key: YOUR_KEY
@@ -25,8 +26,8 @@ Multi-track:
 
 Every sequence makes exactly ONE API call regardless of how many tracks are
 configured.  Columns in the output tensor are ordered by the `tracks` list.
-`aggregation` reduces the seq_len window per track and ``log1p`` is applied
-afterwards, so the default ``sum`` yields ``log1p(sum)``.
+Each track is scored as ``log1p(sum`` of the seq_len window``) — ``aggregation``
+is fixed to ``sum``; mean/max were removed.
 
 Resilience (all optional keys with sensible defaults; old YAMLs work unchanged)
 ------------------------------------------------------------------------------
@@ -86,6 +87,7 @@ import yaml
 from loguru import logger
 
 _DEFAULTS: dict[str, Any] = {
+    "model_version": None,
     "context_len": 16384,
     "seq_len": 600,
     "aggregation": "sum",
@@ -179,6 +181,29 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return out
 
 
+_API_KEY_HELP = (
+    "AlphaGenome API key is not set.\n"
+    "1. Apply for one (free for non-commercial use):\n"
+    "   https://deepmind.google.com/science/alphagenome\n"
+    '   -> "Get API key" -> sign in with a Google account -> accept the terms.\n'
+    "2. Then provide it ONE of these ways:\n"
+    '   - notebook: os.environ["ALPHAGENOME_API_KEY"] = "AIza..."\n'
+    "     and keep 'api_key: ${ALPHAGENOME_API_KEY}' in the config\n"
+    "   - cluster:  export ALPHAGENOME_API_KEY=AIza...\n"
+    "   - or put the key directly in the config: api_key: AIza..."
+)
+
+
+def _check_api_key(key: str) -> None:
+    """Fail locally (with instructions) instead of remotely (with a gRPC error)."""
+    if (
+        not key
+        or key == "YOUR_API_KEY_HERE"
+        or (key.startswith("${") and key.endswith("}"))
+    ):
+        raise ValueError(_API_KEY_HELP)
+
+
 def load_config(path: str) -> dict[str, Any]:
     with open(path) as f:
         cfg = yaml.safe_load(f)
@@ -194,10 +219,10 @@ def load_config(path: str) -> dict[str, Any]:
         cfg["tracks"] = [{"output_type": cfg["output_type"],
                           "biosample_name": cfg["biosample_name"]}]
     cfg = _deep_merge(_DEFAULTS, cfg)
-    if cfg["aggregation"] not in ("sum", "mean", "max"):
+    if cfg["aggregation"] != "sum":
         raise ValueError(
-            f"aggregation must be one of 'sum' | 'mean' | 'max', "
-            f"got {cfg['aggregation']!r}"
+            "aggregation is fixed to 'sum' (log1p of the summed window); "
+            f"mean/max are no longer supported, got {cfg['aggregation']!r}"
         )
     if cfg["seq_len"] > cfg["context_len"]:
         raise ValueError(
@@ -205,6 +230,7 @@ def load_config(path: str) -> dict[str, Any]:
             f"({cfg['context_len']})"
         )
     cfg["api_key"] = os.path.expandvars(cfg["api_key"])
+    _check_api_key(cfg["api_key"])
     return cfg
 
 
@@ -235,6 +261,18 @@ try:
 except ImportError:
     dna_client = None
     OutputType = None
+
+
+def _resolve_model_version(value):
+    """Config value (None | enum | enum-member name) -> what dna_client.create expects."""
+    if value is None or not isinstance(value, str):
+        return value
+    try:
+        return dna_client.ModelVersion[value]
+    except KeyError:
+        members = [m.name for m in dna_client.ModelVersion]
+        raise ValueError(
+            f"model_version {value!r} is not one of {members}") from None
 
 
 class _SqliteCache:
@@ -368,7 +406,9 @@ class AlphaGenomeAdapter(nn.Module):
         # dna_client.create accepts a client-wide `timeout` (seconds) that acts
         # as the per-RPC deadline — a single call can never hang forever; the
         # retry state machine takes over when the deadline trips.
-        self._dna_model = dna_client.create(cfg["api_key"], timeout=self._rpc_timeout)
+        self._dna_model = dna_client.create(
+            cfg["api_key"], timeout=self._rpc_timeout,
+            model_version=_resolve_model_version(cfg["model_version"]))
         self._client_created_at = time.time()
         self._client_calls = 0
 
@@ -521,6 +561,7 @@ class AlphaGenomeAdapter(nn.Module):
         payload = {
             "adapter_cache_schema": 1,
             "model": "alphagenome-api",
+            "model_version": self._cfg.get("model_version"),
             "sequence": raw_seq,
             "context_len": self._context_len,
             "seq_len": self._seq_len,
@@ -552,14 +593,12 @@ class AlphaGenomeAdapter(nn.Module):
         return values
 
     def _extract_values(self, output) -> list:
-        agg_fn = {"sum": np.sum, "mean": np.mean, "max": np.max}[
-            self._cfg["aggregation"]
-        ]
+        # aggregation is fixed: log1p of the summed seq_len window per track
         parts = []
         for attr, col_idx in self._extraction_plan:
             track_data = getattr(output, attr)
             window = track_data.values[self._start_idx:self._end_idx, :]
-            parts.append(np.log1p(agg_fn(window[:, col_idx], axis=0)))
+            parts.append(np.log1p(np.sum(window[:, col_idx], axis=0)))
         return np.concatenate(parts).tolist()
 
     # ── Layer 2: resilient API call ───────────────────────────────────────────
@@ -576,7 +615,9 @@ class AlphaGenomeAdapter(nn.Module):
         for attempt in range(5):
             try:
                 self._dna_model = dna_client.create(
-                    self._cfg["api_key"], timeout=self._rpc_timeout
+                    self._cfg["api_key"], timeout=self._rpc_timeout,
+                    model_version=_resolve_model_version(
+                        self._cfg["model_version"]),
                 )
                 self._client_created_at = time.time()
                 self._client_calls = 0

@@ -46,7 +46,7 @@ def test_run_single_isa_incremental_io(mock_setup):
     motif_df.to_csv(motif_path, index=False)
 
     pred_orig_path = tmp_path / "pred_orig.csv"
-    calc_pred_orig(model=model, fasta=fasta, motif_locs_path=str(motif_path),
+    calc_pred_orig(model=model, fasta=fasta, regions_df=pd.read_csv(motif_path),
                    tracks=[0], outpath=str(pred_orig_path), device=device,
                    pred_batch_size=4)
 
