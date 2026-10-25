@@ -34,7 +34,6 @@ from deepISA.discover import (
     run_finemo_scan,
     load_hits_with_annotation,
     load_motifs,
-    cwm_to_meme,
 )
 from deepISA.discover.modisco import read_attribution_h5
 

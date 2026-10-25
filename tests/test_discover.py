@@ -798,3 +798,69 @@ class TestMapMotifFinemo:
         with pytest.raises(ValueError, match="peak_name"):
             map_motif_finemo(bad, regions, str(tmp_path / "m.csv"),
                              str(tmp_path / "n.csv"))
+
+    def test_run_isa_union_of_jaspar_and_finemo(self, tmp_path, monkeypatch):
+        """method=["JASPAR", "modisco-finemo"]: both sources run, their hits
+        are unioned (deduplicated) into motif_locs, downstream ISA proceeds."""
+        import deepISA.quickstart as qs
+
+        fa = str(tmp_path / "syn.fa")
+        with open(fa, "w") as fh:
+            fh.write(">chrA\n" + "ACGT" * 150 + "\n")
+        df = pd.DataFrame({"chrom": ["chrA"], "start": [0], "end": [600]})
+        pipe = QuickStart(results_dir=str(tmp_path / "res"), fasta_path=fa,
+                          df_input=df, device="cpu")
+        pipe.define_model({"seq_len": 600, "ks": [7], "cs": [8], "ds": [1],
+                           "dropout": 0.0}, mode="regression")
+
+        # stub the JASPAR mapper: one known-TF hit at 400-410
+        def fake_map_motifs(regions_df, jaspar_path, motif_outpath,
+                            non_motif_outpath, expressed_tfs=None,
+                            motif_score_thresh=500, remap_path=None):
+            pd.DataFrame([{"chrom": "chrA", "start": 400, "end": 410,
+                           "start_rel": 400, "end_rel": 410, "tf": "CTCF",
+                           "score": 700, "strand": "+", "region": "chrA:0-600"}]
+                         ).to_csv(motif_outpath, index=False)
+        monkeypatch.setattr(qs, "map_motifs", fake_map_motifs)
+
+        def fake_modisco_cli(ohe_npz, hyp_npz, out_h5, n_seqlets=50000, window=None):
+            TestQuickStartOrchestration._write_fake_modisco_h5(out_h5)
+            return out_h5
+        monkeypatch.setattr(qs, "run_modisco", fake_modisco_cli)
+
+        def fake_finemo_cli(npz_path, out_dir, motif_db_h5, lam=0.7, max_steps=10000):
+            hits = pd.DataFrame({
+                "peak_name": ["chrA:0-600"] * 2,
+                "start": [50, 100],            # 40bp apart -> one combi pair
+                "end": [60, 110],
+                "strand": ["+", "+"],
+                "motif_name": ["pos_patterns.pattern_0"] * 2,
+                "hit_coefficient_global": [1.5, 0.9],
+            })
+            out = Path(out_dir) / "hits.tsv"
+            out.parent.mkdir(parents=True, exist_ok=True)
+            hits.to_csv(out, sep="\t", index=False)
+            return str(out)
+        monkeypatch.setattr(qs, "run_finemo_scan", fake_finemo_cli)
+
+        pipe.run_isa(
+            jaspar_path="stubbed",
+            isa_config={
+                "method": ["JASPAR", "modisco-finemo"],
+                "discovery_top_frac": None,
+                "n_samples": 12, "n_bins": 2,
+                "num_regions_per_batch": 10, "pred_batch_size": 4,
+                "receptive_field": 255,
+            },
+        )
+
+        motif_df = pd.read_csv(pipe.files["motif_locs"])
+        # JASPAR hit (400-410, CTCF) + finemo hits (50-60, 400-410) = 3 rows
+        # (same interval from two sources is kept once per tf/score tuple)
+        assert len(motif_df) == 3, motif_df.to_dict("records")
+        tfs = set(motif_df["tf"])
+        assert "CTCF" in tfs                                   # JASPAR side
+        assert any(t.startswith("PATTERN") for t in tfs)       # finemo side
+        # downstream stages ran on the union
+        assert os.path.exists(pipe.files["isa_single"])
+        assert len(pd.read_csv(pipe.files["isa_single"])) == 3
